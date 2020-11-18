@@ -1,1 +1,1 @@
-# latent_3d_point_Pytorch
+# latent_3d_points_Pytorch

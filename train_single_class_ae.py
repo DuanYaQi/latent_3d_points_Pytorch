@@ -96,17 +96,6 @@ class_dir = osp.join(top_in_dir , syn_id)        # 组成class的文件id
 dataset = ShapeNetDataset(samples_dir = class_dir)
 
 # 导入训练集数据
-<<<<<<< HEAD
-dataloader = DataLoader(dataset, batch_size = 50, num_workers=2)
-
-pc_clouds = load_all_point_clouds_under_folder(class_dir, n_threads=8, file_ending='.ply', verbose=True) # 加载文件夹下的全部点云数据
-pc_clouds = torch.from_numpy(pc_clouds)
-ds = TensorDataset(pc_clouds)
-dl = DataLoader(ds, batch_size = 50, num_workers=2)
-
-
-# 训练一次
-=======
 dataloader = DataLoader(dataset, batch_size = 50, shuffle=False, num_workers=0)
 
 
@@ -128,7 +117,6 @@ def train_step(model, features):
     return loss.item()
 
 # 测试train_step效果
->>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
 
 def train_step(model, features):
     
@@ -145,11 +133,6 @@ def train_step(model, features):
     
     return loss.item()
 
-<<<<<<< HEAD
-# 测试train_step效果
-features = next(iter(dl))
-=======
 features = next(iter(dataloader))
->>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
 model = EncoderDecoder()
 train_step(model,features)

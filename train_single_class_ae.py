@@ -1,37 +1,35 @@
-# 导入相关库
-import os.path as osp
-import torch
-from torch.utils.data import TensorDataset,DataLoader
-from torchkeras import Model
-import torch.nn as nn
-import torch.nn.functional as F
 import os
+import os.path as osp
+import time
 import datetime
 import warnings
-
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from argparse import ArgumentParser
+from torch.utils.data import TensorDataset,DataLoader
+from torchkeras import Model,summary
 
 from utils.in_out import snc_category_to_synth_id
 from utils.dataset import ShapeNetDataset
 from utils.plot_3d_pc import plot_3d_point_cloud
 from metric.loss import ChamferLoss
 
-
-# -----------------------------------------------------------------------------------------
-# 打印时间
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# --------------------------------------------------------------------------------------print time
 def printbar():
     nowtime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print("\n"+"=========="*8 + "%s"%nowtime)
 
-# --------------------------------------------------------------------------------------AE变分器
+# --------------------------------------------------------------------------------------AE
 class EncoderDecoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = torch.nn.Conv1d(3, 64, 1)
-        self.conv2 = torch.nn.Conv1d(64, 128, 1)
-        self.conv3 = torch.nn.Conv1d(128, 128, 1)
-        self.conv4 = torch.nn.Conv1d(128, 256, 1)
-        self.conv5 = torch.nn.Conv1d(256, 128, 1)
+        self.conv1 = nn.Conv1d(3, 64, 1)
+        self.conv2 = nn.Conv1d(64, 128, 1)
+        self.conv3 = nn.Conv1d(128, 128, 1)
+        self.conv4 = nn.Conv1d(128, 256, 1)
+        self.conv5 = nn.Conv1d(256, 128, 1)
         self.bn1 = nn.BatchNorm1d(64)
         self.bn2 = nn.BatchNorm1d(128)
         self.bn3 = nn.BatchNorm1d(128)
@@ -70,33 +68,33 @@ class EncoderDecoder(nn.Module):
         cd = loss(z,x)
         return cd
 
-    # 优化器
     @property
     def optimizer(self):
         return torch.optim.Adam(self.parameters(),lr = 0.0005)
 
 # -----------------------------------------------------------------------------------------
 def train_step(model, features):
-    
-    # 正向传播求损失
+    # train，dropout work/ valid dropout dont work
+    model.train()
+
+    # forward to loss
     predictions = model(features)
     loss = model.loss_func(predictions,features)
     
-    # 反向传播求梯度
+    # backward to gradient
     loss.backward()
     
-    # 更新模型参数
+    # update model params  and  zero_grads
     model.optimizer.step()
     model.optimizer.zero_grad()
     
     return loss.item()
 
 # -----------------------------------------------------------------------------------------
-# 训练模型
 def train_model(model, dataloader, epochs):
     for epoch in range(1,epochs+1):
         for features in dataloader:
-            loss = train_step(model,features)
+            loss = train_step(model,features.to(device))
         if epoch%1==0:
             printbar()
             print("epoch =",epoch,"loss = ",loss)
@@ -104,10 +102,13 @@ def train_model(model, dataloader, epochs):
 # -----------------------------------------------------------------------------------------
 def showfig(model, dataloader):
     feed_pc = next(iter(dataloader))
-    reconstructions = model(feed_pc)
-    reconstructions = reconstructions.detach()
-
-    i = 1
+    reconstructions = model(feed_pc.to(device))
+    if torch.cuda.is_available():
+        reconstructions = reconstructions.detach().to("cpu")
+    else:
+        reconstructions = reconstructions.detach()
+    
+    i = 5
     # Ground Truth
     plot_3d_point_cloud(feed_pc[i][:, 0], 
                         feed_pc[i][:, 1], 
@@ -126,35 +127,51 @@ def parse_arguments():
     parser.add_argument('--ae_loss', type=str, help='Loss to optimize: emd or chamfer', default = 'chamfer') #TODO: ADD EMD
     parser.add_argument('--class_name', type=str, default = 'chair')
     parser.add_argument('--batch_size', type=int, default = 50)
-    parser.add_argument('--sample_num', type=int, default = 100)
-    parser.add_argument('--epochs', type=int, default = 1)
+    parser.add_argument('--sample_num', type=int, default = 6000)
+    parser.add_argument('--epochs', type=int, default = 50)
     return parser.parse_args()
 
 # -----------------------------------------------------------------------------------------
-def train(phase='Train', checkpoint_path: str=None):
+def train(phase='Train', checkpoint_path: str=None, show: bool=False, verbose: bool=False):
     args = parse_arguments()
 
     # Load Point-Clouds
-    syn_id = snc_category_to_synth_id()[args.class_name]  # 每个class对应一个文件夹id
-    class_dir = osp.join(args.top_in_dir , syn_id)        # 组成class的文件id
+    syn_id = snc_category_to_synth_id()[args.class_name]  # class2id
+    class_dir = osp.join(args.top_in_dir , syn_id)
 
     dataset = ShapeNetDataset(samples_dir = class_dir, sample_num = args.sample_num)
-    dataloader = DataLoader(dataset, batch_size = args.batch_size, shuffle=False, num_workers=0)
+    dataloader = DataLoader(dataset, batch_size = args.batch_size, shuffle=False, num_workers=2)
     model = EncoderDecoder()
+    #summary(model,input_shape= (2048,3))
+    model = model.to(device)
 
     if phase == 'Train':
-        train_model(model, dataloader, args.epochs)
-        
+        if not(verbose):
+            train_model(model, dataloader, args.epochs)
+        else:
+            tic = time.time()
+            train_model(model, dataloader, args.epochs)
+            toc = time.time()
+            print("time used:",toc-tic,'s')
         if checkpoint_path is not None:
             torch.save(model.state_dict(), checkpoint_path)
             print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
-    else:  # Test
+    elif phase == 'continueTrain':
+        model.load_state_dict(torch.load(checkpoint_path))
+        train_model(model, dataloader, args.epochs)
+        if checkpoint_path is not None:
+            torch.save(model.state_dict(), checkpoint_path)
+            print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
+    else:
         model.load_state_dict(torch.load(checkpoint_path))
 
-    showfig(model, dataloader)
+    if show:
+        showfig(model, dataloader)
 
 # -----------------------------------------------------------------------------------------
 if __name__ == "__main__":
-    checkpoint_path = './model/AEModel1.pkl'
-    train('Train', checkpoint_path)
+    checkpoint_path = './model/AEModel.pkl'
+    show = True
+    verbose = True
+    train('Test', checkpoint_path, show, verbose)
     #train('Test', checkpoint_path)

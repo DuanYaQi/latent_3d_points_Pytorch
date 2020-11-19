@@ -4,6 +4,10 @@ import torch
 from torch.utils.data import TensorDataset,DataLoader
 from torchkeras import Model
 import torch.nn as nn
+<<<<<<< HEAD
+=======
+import torch.nn.functional as F
+>>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
 
 from utils.in_out import snc_category_to_synth_id,load_all_point_clouds_under_folder
 from utils.dataset import ShapeNetDataset
@@ -13,7 +17,11 @@ class EncoderDecoder(nn.Module):
         super().__init__()
         self.conv1 = torch.nn.Conv1d(3, 64, 1)
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
+<<<<<<< HEAD
         self.conv3 = torch.nn.Conv1d(64, 128, 1)
+=======
+        self.conv3 = torch.nn.Conv1d(128, 128, 1)
+>>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
         self.conv4 = torch.nn.Conv1d(128, 256, 1)
         self.conv5 = torch.nn.Conv1d(256, 128, 1)
         self.bn1 = nn.BatchNorm1d(64)
@@ -30,11 +38,22 @@ class EncoderDecoder(nn.Module):
     
     def forward(self,x):
         batchsize = x.size()[0]
+<<<<<<< HEAD
         z = F.relu(self.bn1(self.conv1(x)))
         z = F.relu(self.bn2(self.conv2(z)))
         z = F.relu(self.bn3(self.conv3(z)))
         z = F.relu(self.bn4(self.conv4(z)))
         z = F.relu(self.bn4(self.conv5(z)))
+=======
+        pointnum = x.size()[1]
+        channel = x.size()[2]
+        z = x.transpose(2, 1)
+        z = F.relu(self.bn1(self.conv1(z)))
+        z = F.relu(self.bn2(self.conv2(z)))
+        z = F.relu(self.bn3(self.conv3(z)))
+        z = F.relu(self.bn4(self.conv4(z)))
+        z = F.relu(self.bn5(self.conv5(z)))
+>>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
         z = torch.max(z, 2, keepdim=True)[0]
         z = z.view(-1, 128)
 
@@ -42,7 +61,12 @@ class EncoderDecoder(nn.Module):
         z = F.relu(self.fc2(z))
         z = self.fc3(z)
 
+<<<<<<< HEAD
         z = z.view(-1, 2048, 3)
+=======
+        z = z.view(-1, channel, pointnum)
+        z = z.transpose(2, 1)
+>>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
         return z
 
     def loss_func(self, z, x):  
@@ -72,12 +96,18 @@ class_dir = osp.join(top_in_dir , syn_id)        # 组成class的文件id
 dataset = ShapeNetDataset(samples_dir = class_dir)
 
 # 导入训练集数据
+<<<<<<< HEAD
 dataloader = DataLoader(dataset, batch_size = 50, num_workers=2)
 
 pc_clouds = load_all_point_clouds_under_folder(class_dir, n_threads=8, file_ending='.ply', verbose=True) # 加载文件夹下的全部点云数据
 pc_clouds = torch.from_numpy(pc_clouds)
 ds = TensorDataset(pc_clouds)
 dl = DataLoader(ds, batch_size = 50, num_workers=2)
+
+
+# 训练一次
+=======
+dataloader = DataLoader(dataset, batch_size = 50, shuffle=False, num_workers=0)
 
 
 # 训练一次
@@ -98,6 +128,28 @@ def train_step(model, features):
     return loss.item()
 
 # 测试train_step效果
+>>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
+
+def train_step(model, features):
+    
+    # 正向传播求损失
+    predictions = model(features)
+    loss = model.loss_func(predictions,feature)
+    
+    # 反向传播求梯度
+    loss.backward()
+    
+    # 更新模型参数
+    model.optimizer.step()
+    model.optimizer.zero_grad()
+    
+    return loss.item()
+
+<<<<<<< HEAD
+# 测试train_step效果
 features = next(iter(dl))
+=======
+features = next(iter(dataloader))
+>>>>>>> 88c700e218d7e1d6f2d7fb92e8e4ff59a056d1cd
 model = EncoderDecoder()
 train_step(model,features)

@@ -7,6 +7,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 import datetime
+import warnings
+
+from argparse import ArgumentParser
 
 from utils.in_out import snc_category_to_synth_id
 from utils.dataset import ShapeNetDataset
@@ -115,41 +118,48 @@ def showfig(model, dataloader):
                         reconstructions[i][:, 2], in_u_sphere=True);
 
 # -----------------------------------------------------------------------------------------
-def train(phase='Train', checkpoint_path: str=None):
-    ## 预配置
-    top_out_dir = '/home/latent_3d_points_Pytorch/data/'          # Use to save Neural-Net check-points etc 用于保存神经网络检查点等
-    top_in_dir = '/home/latent_3d_points_Pytorch/data/shape_net_core_uniform_samples_2048/' # Top-dir of where point-clouds are stored.点云的存储位置的top-dir。
-    experiment_name = 'single_class_ae'
-    n_pc_points = 2048                # Number of points per model.每个模型的点数。
-    bneck_size = 128                  # Bottleneck-AE size    Bottlenck-AE的大小
-    ae_loss = 'chamfer'                   # Loss to optimize: 'emd' or 'chamfer' 优化损失：'emd' or 'chamfer'
-    class_name = 'chair'.lower()
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument('--top_in_dir', type=str, help='Top-dir of where point-clouds are stored', default = '/home/latent_3d_points_Pytorch/data/shape_net_core_uniform_samples_2048/')
+    parser.add_argument('--n_pc_points', type=int, help='Number of points per model', default = 2048)       #TODO: Adapt datasets
+    parser.add_argument('--bneck_size', type=int, help='Bottleneck-AE size', default = 128)                 #TODO: Adapt haparms
+    parser.add_argument('--ae_loss', type=str, help='Loss to optimize: emd or chamfer', default = 'chamfer') #TODO: ADD EMD
+    parser.add_argument('--class_name', type=str, default = 'chair')
+    parser.add_argument('--batch_size', type=int, default = 50)
+    parser.add_argument('--sample_num', type=int, default = 100)
+    parser.add_argument('--epochs', type=int, default = 1)
+    return parser.parse_args()
 
+# -----------------------------------------------------------------------------------------
+def train(phase='Train', checkpoint_path: str=None):
+    args = parse_arguments()
 
     # Load Point-Clouds 加载点云
-    syn_id = snc_category_to_synth_id()[class_name]  # 每个class对应一个文件夹id
-    class_dir = osp.join(top_in_dir , syn_id)        # 组成class的文件id
+    syn_id = snc_category_to_synth_id()[args.class_name]  # 每个class对应一个文件夹id
+    class_dir = osp.join(args.top_in_dir , syn_id)        # 组成class的文件id
 
     # 导入训练集数据
-    dataset = ShapeNetDataset(samples_dir = class_dir, sample_num = 100) # TODO: set your own sample_num 
-    dataloader = DataLoader(dataset, batch_size = 50, shuffle=False, num_workers=0)
+    dataset = ShapeNetDataset(samples_dir = class_dir, sample_num = args.sample_num) # TODO: set your own sample_num 
+    dataloader = DataLoader(dataset, batch_size = args.batch_size, shuffle=False, num_workers=0)
+    model = EncoderDecoder()
 
     if phase == 'Train':
-        model = EncoderDecoder()
-        train_model(model, dataloader, epochs = 50)
+        train_model(model, dataloader, args.epochs)
+        
         if checkpoint_path is not None:
-            torch.save(model, checkpoint_path)
+            torch.save(model.state_dict(), checkpoint_path)
             print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
 
     else:  # Test
-        model = EncoderDecoder()
         model.load_state_dict(torch.load(checkpoint_path))
-    
+
     showfig(model, dataloader)
+    
+    
 
 # -----------------------------------------------------------------------------------------
 if __name__ == "__main__":
 
-    checkpoint_path = './model/AEModel.pkl'
+    checkpoint_path = './model/AEModel1.pkl'
     train('Train', checkpoint_path)
     #train('Test', checkpoint_path)

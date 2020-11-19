@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from utils.in_out import snc_category_to_synth_id
 from utils.dataset import ShapeNetDataset
+from metric.loss import ChamferLoss
 
 class EncoderDecoder(nn.Module):
     def __init__(self):
@@ -51,7 +52,9 @@ class EncoderDecoder(nn.Module):
         return z
 
     def loss_func(self, z, x):  
-        return nn.BCELoss()(z, x)
+        loss = ChamferLoss()
+        cd = loss(z,x)
+        return cd
 
     # 优化器
     @property

@@ -108,7 +108,7 @@ def showfig(model, dataloader):
     else:
         reconstructions = reconstructions.detach()
     
-    i = 5
+    i = 49
     # Ground Truth
     plot_3d_point_cloud(feed_pc[i][:, 0], 
                         feed_pc[i][:, 1], 

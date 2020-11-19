@@ -1,16 +1,19 @@
 import torch
 import torch.utils.data as data
 import os
-import json
 import numpy as np
+import warnings
+
 from plyfile import PlyData
 
-
 class ShapeNetDataset(data.Dataset):
-    def __init__(self,samples_dir):
+    def __init__(self, samples_dir, sample_num):
         self.samples_dir = samples_dir
         self.samples_paths = os.listdir(samples_dir)
-        
+        if sample_num < len(self.samples_paths):
+            self.samples_paths = self.samples_paths[0:sample_num]
+        else:
+            warnings.warn('Sample_num Overflow.')
 
     def __getitem__(self, index):
         fn = self.samples_dir + '/' + self.samples_paths[index]

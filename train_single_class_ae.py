@@ -5,11 +5,22 @@ from torch.utils.data import TensorDataset,DataLoader
 from torchkeras import Model
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+import datetime
 
 from utils.in_out import snc_category_to_synth_id
 from utils.dataset import ShapeNetDataset
+from utils.plot_3d_pc import plot_3d_point_cloud
 from metric.loss import ChamferLoss
 
+
+# -----------------------------------------------------------------------------------------
+# 打印时间
+def printbar():
+    nowtime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print("\n"+"=========="*8 + "%s"%nowtime)
+
+# --------------------------------------------------------------------------------------AE变分器
 class EncoderDecoder(nn.Module):
     def __init__(self):
         super().__init__()
@@ -61,27 +72,7 @@ class EncoderDecoder(nn.Module):
     def optimizer(self):
         return torch.optim.Adam(self.parameters(),lr = 0.0005)
 
-
-## 预配置
-top_out_dir = '/home/latent_3d_points_Pytorch/data/'          # Use to save Neural-Net check-points etc 用于保存神经网络检查点等
-top_in_dir = '/home/latent_3d_points_Pytorch/data/shape_net_core_uniform_samples_2048/' # Top-dir of where point-clouds are stored.点云的存储位置的top-dir。
-experiment_name = 'single_class_ae'
-n_pc_points = 2048                # Number of points per model.每个模型的点数。
-bneck_size = 128                  # Bottleneck-AE size    Bottlenck-AE的大小
-ae_loss = 'chamfer'                   # Loss to optimize: 'emd' or 'chamfer' 优化损失：'emd' or 'chamfer'
-class_name = 'chair'.lower()
-
-
-# Load Point-Clouds 加载点云
-syn_id = snc_category_to_synth_id()[class_name]  # 每个class对应一个文件夹id
-class_dir = osp.join(top_in_dir , syn_id)        # 组成class的文件id
-
-# 导入训练集数据
-dataset = ShapeNetDataset(samples_dir = class_dir)
-dataloader = DataLoader(dataset, batch_size = 50, shuffle=False, num_workers=0)
-
-
-# 训练一次
+# -----------------------------------------------------------------------------------------
 def train_step(model, features):
     
     # 正向传播求损失
@@ -97,6 +88,68 @@ def train_step(model, features):
     
     return loss.item()
 
-features = next(iter(dataloader))
-model = EncoderDecoder()
-train_step(model,features)
+# -----------------------------------------------------------------------------------------
+# 训练模型
+def train_model(model, dataloader, epochs):
+    for epoch in range(1,epochs+1):
+        for features in dataloader:
+            loss = train_step(model,features)
+        if epoch%1==0:
+            printbar()
+            print("epoch =",epoch,"loss = ",loss)
+
+# -----------------------------------------------------------------------------------------
+def showfig(model, dataloader):
+    feed_pc = next(iter(dataloader))
+    reconstructions = model(feed_pc)
+    reconstructions = reconstructions.detach()
+
+    i = 1
+    # Ground Truth
+    plot_3d_point_cloud(feed_pc[i][:, 0], 
+                        feed_pc[i][:, 1], 
+                        feed_pc[i][:, 2], in_u_sphere=True);
+    # Generative Point
+    plot_3d_point_cloud(reconstructions[i][:, 0], 
+                        reconstructions[i][:, 1], 
+                        reconstructions[i][:, 2], in_u_sphere=True);
+
+# -----------------------------------------------------------------------------------------
+def train(phase='Train', checkpoint_path: str=None):
+    ## 预配置
+    top_out_dir = '/home/latent_3d_points_Pytorch/data/'          # Use to save Neural-Net check-points etc 用于保存神经网络检查点等
+    top_in_dir = '/home/latent_3d_points_Pytorch/data/shape_net_core_uniform_samples_2048/' # Top-dir of where point-clouds are stored.点云的存储位置的top-dir。
+    experiment_name = 'single_class_ae'
+    n_pc_points = 2048                # Number of points per model.每个模型的点数。
+    bneck_size = 128                  # Bottleneck-AE size    Bottlenck-AE的大小
+    ae_loss = 'chamfer'                   # Loss to optimize: 'emd' or 'chamfer' 优化损失：'emd' or 'chamfer'
+    class_name = 'chair'.lower()
+
+
+    # Load Point-Clouds 加载点云
+    syn_id = snc_category_to_synth_id()[class_name]  # 每个class对应一个文件夹id
+    class_dir = osp.join(top_in_dir , syn_id)        # 组成class的文件id
+
+    # 导入训练集数据
+    dataset = ShapeNetDataset(samples_dir = class_dir, sample_num = 100) # TODO: set your own sample_num 
+    dataloader = DataLoader(dataset, batch_size = 50, shuffle=False, num_workers=0)
+
+    if phase == 'Train':
+        model = EncoderDecoder()
+        train_model(model, dataloader, epochs = 50)
+        if checkpoint_path is not None:
+            torch.save(model, checkpoint_path)
+            print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
+
+    else:  # Test
+        model = EncoderDecoder()
+        model.load_state_dict(torch.load(checkpoint_path))
+    
+    showfig(model, dataloader)
+
+# -----------------------------------------------------------------------------------------
+if __name__ == "__main__":
+
+    checkpoint_path = './model/AEModel.pkl'
+    train('Train', checkpoint_path)
+    #train('Test', checkpoint_path)

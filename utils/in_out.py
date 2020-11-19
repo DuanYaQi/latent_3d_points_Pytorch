@@ -1,12 +1,4 @@
 import six
-import re
-import os
-import os.path as osp
-import numpy as np
-from multiprocessing import Pool
-
-from utils.python_plyfile.plyfile import PlyData
-
 
 snc_synth_id_to_category = {
     '02691156': 'airplane',  '02773838': 'bag',        '02801938': 'basket',
@@ -30,65 +22,7 @@ snc_synth_id_to_category = {
     '04554684': 'washer',    '02858304': 'boat',       '02992529': 'cellphone'
 }
 
-
 def snc_category_to_synth_id():
     d = snc_synth_id_to_category
     inv_map = {v: k for k, v in six.iteritems(d)}
     return inv_map
-
-def files_in_subdirs(top_dir, search_pattern):
-    regex = re.compile(search_pattern)
-    for path, _, files in os.walk(top_dir):
-        for name in files:
-            full_name = osp.join(path, name)
-            if regex.search(full_name):
-                yield full_name
-
-def load_ply(file_name, with_faces=False, with_color=False):
-    ply_data = PlyData.read(file_name)
-    points = ply_data['vertex']
-    points = np.vstack([points['x'], points['y'], points['z']]).T
-    ret_val = [points]
-
-    if with_faces:
-        faces = np.vstack(ply_data['face']['vertex_indices'])
-        ret_val.append(faces)
-
-    if with_color:
-        r = np.vstack(ply_data['vertex']['red'])
-        g = np.vstack(ply_data['vertex']['green'])
-        b = np.vstack(ply_data['vertex']['blue'])
-        color = np.hstack((r, g, b))
-        ret_val.append(color)
-
-    if len(ret_val) == 1:  # Unwrap the list
-        ret_val = ret_val[0]
-
-    return ret_val
-    
-def pc_loader(f_name):
-    ''' loads a point-cloud saved under ShapeNet's "standar" folder scheme: 
-    i.e. /syn_id/model_name.ply
-    '''
-    return load_ply(f_name)
-
-def load_all_point_clouds_under_folder(top_dir, n_threads=20, file_ending='.ply', verbose=False):
-    file_names = [f for f in files_in_subdirs(top_dir, file_ending)]
-    pclouds = load_point_clouds_from_filenames(file_names, n_threads, loader=pc_loader, verbose=verbose)
-    return pclouds
-
-def load_point_clouds_from_filenames(file_names, n_threads, loader, verbose=False):
-    pc = loader(file_names[0])
-    pclouds = np.empty([len(file_names), pc.shape[0], pc.shape[1]], dtype=np.float32)
-    pool = Pool(n_threads)
-
-    for i, data in enumerate(pool.imap(loader, file_names)):
-        pclouds[i, :, :] = data
-
-    pool.close()
-    pool.join()
-
-    if verbose:
-        print('{0} pclouds were loaded.'.format(len(pclouds)))
-
-    return pclouds

@@ -134,12 +134,11 @@ def parse_arguments():
 def train(phase='Train', checkpoint_path: str=None):
     args = parse_arguments()
 
-    # Load Point-Clouds 加载点云
+    # Load Point-Clouds
     syn_id = snc_category_to_synth_id()[args.class_name]  # 每个class对应一个文件夹id
     class_dir = osp.join(args.top_in_dir , syn_id)        # 组成class的文件id
 
-    # 导入训练集数据
-    dataset = ShapeNetDataset(samples_dir = class_dir, sample_num = args.sample_num) # TODO: set your own sample_num 
+    dataset = ShapeNetDataset(samples_dir = class_dir, sample_num = args.sample_num)
     dataloader = DataLoader(dataset, batch_size = args.batch_size, shuffle=False, num_workers=0)
     model = EncoderDecoder()
 
@@ -149,17 +148,13 @@ def train(phase='Train', checkpoint_path: str=None):
         if checkpoint_path is not None:
             torch.save(model.state_dict(), checkpoint_path)
             print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
-
     else:  # Test
         model.load_state_dict(torch.load(checkpoint_path))
 
     showfig(model, dataloader)
-    
-    
 
 # -----------------------------------------------------------------------------------------
 if __name__ == "__main__":
-
     checkpoint_path = './model/AEModel1.pkl'
     train('Train', checkpoint_path)
     #train('Test', checkpoint_path)

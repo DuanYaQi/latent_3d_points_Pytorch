@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from argparse import ArgumentParser
 from torch.utils.data import TensorDataset,DataLoader
 from torchkeras import Model,summary
+import pytorch_lightning as pl
 
 from utils.in_out import snc_category_to_synth_id
 from utils.dataset import ShapeNetDataset
@@ -16,12 +17,33 @@ from utils.plot_3d_pc import plot_3d_point_cloud
 from metric.loss import ChamferLoss
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# --------------------------------------------------------------------------------------print time
-def printbar():
-    nowtime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    print("\n"+"=========="*8 + "%s"%nowtime)
 
 # --------------------------------------------------------------------------------------AE
+class AE(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.network = EncoderDecoder()
+
+    def forward(self, x):
+        z = self.network(x)
+        return z
+
+    def training_step(self, batch, batch_idx):
+        x = batch
+        z = self.network(x)
+        loss = self.loss_func(z, x)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def loss_func(self, z, x):  
+        loss = ChamferLoss()
+        cd = loss(z,x)
+        return cd
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr = 0.0005)
+        return optimizer
+# --------------------------------------------------------------------------------------
 class EncoderDecoder(nn.Module):
     def __init__(self):
         super().__init__()
@@ -36,13 +58,11 @@ class EncoderDecoder(nn.Module):
         self.bn4 = nn.BatchNorm1d(256)
         self.bn5 = nn.BatchNorm1d(128)
         self.relu = nn.ReLU()
-
         self.fc1 = nn.Linear(128, 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 6144)
-
     
-    def forward(self,x):
+    def forward(self, x):
         batchsize = x.size()[0]
         pointnum = x.size()[1]
         channel = x.size()[2]
@@ -62,42 +82,6 @@ class EncoderDecoder(nn.Module):
         z = z.view(-1, channel, pointnum)
         z = z.transpose(2, 1)
         return z
-
-    def loss_func(self, z, x):  
-        loss = ChamferLoss()
-        cd = loss(z,x)
-        return cd
-
-    @property
-    def optimizer(self):
-        return torch.optim.Adam(self.parameters(),lr = 0.0005)
-
-# -----------------------------------------------------------------------------------------
-def train_step(model, features):
-    # train，dropout work/ valid dropout dont work
-    model.train()
-
-    # forward to loss
-    predictions = model(features)
-    loss = model.loss_func(predictions,features)
-    
-    # backward to gradient
-    loss.backward()
-    
-    # update model params  and  zero_grads
-    model.optimizer.step()
-    model.optimizer.zero_grad()
-    
-    return loss.item()
-
-# -----------------------------------------------------------------------------------------
-def train_model(model, dataloader, epochs):
-    for epoch in range(1,epochs+1):
-        for features in dataloader:
-            loss = train_step(model,features.to(device))
-        if epoch%1==0:
-            printbar()
-            print("epoch =",epoch,"loss = ",loss)
 
 # -----------------------------------------------------------------------------------------
 def showfig(model, dataloader):
@@ -127,51 +111,46 @@ def parse_arguments():
     parser.add_argument('--ae_loss', type=str, help='Loss to optimize: emd or chamfer', default = 'chamfer') #TODO: ADD EMD
     parser.add_argument('--class_name', type=str, default = 'chair')
     parser.add_argument('--batch_size', type=int, default = 50)
-    parser.add_argument('--sample_num', type=int, default = 6000)
-    parser.add_argument('--epochs', type=int, default = 50)
+    parser.add_argument('--sample_num', type=int, default = 6500)
     return parser.parse_args()
 
 # -----------------------------------------------------------------------------------------
-def train(phase='Train', checkpoint_path: str=None, show: bool=False, verbose: bool=False):
+def train(phase='Train', checkpoint_path: str=None):
     args = parse_arguments()
-
+    trainer_config = {
+        'gpus'                   : 1,  # Set this to None for CPU training
+        'max_epochs'             : 100,
+        'automatic_optimization' : True,
+    }
     # Load Point-Clouds
     syn_id = snc_category_to_synth_id()[args.class_name]  # class2id
     class_dir = osp.join(args.top_in_dir , syn_id)
-
+    # dataset
     dataset = ShapeNetDataset(samples_dir = class_dir, sample_num = args.sample_num)
-    dataloader = DataLoader(dataset, batch_size = args.batch_size, shuffle=False, num_workers=2)
-    model = EncoderDecoder()
-    #summary(model,input_shape= (2048,3))
-    model = model.to(device)
+    train_loader = DataLoader(dataset, batch_size = args.batch_size, shuffle=False, num_workers=2)
+    # network
+    autoencoder = AE()
+    trainer = pl.Trainer(**trainer_config)
 
     if phase == 'Train':
-        if not(verbose):
-            train_model(model, dataloader, args.epochs)
-        else:
-            tic = time.time()
-            train_model(model, dataloader, args.epochs)
-            toc = time.time()
-            print("time used:",toc-tic,'s')
+        trainer.fit(autoencoder, train_loader)
         if checkpoint_path is not None:
-            torch.save(model.state_dict(), checkpoint_path)
+            torch.save(autoencoder.network, checkpoint_path)
             print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
+        showfig(autoencoder, train_loader)
     elif phase == 'continueTrain':
-        model.load_state_dict(torch.load(checkpoint_path))
-        train_model(model, dataloader, args.epochs)
+        autoencoder.network = torch.load(checkpoint_path, map_location=device)
+        trainer.fit(autoencoder, train_loader)
         if checkpoint_path is not None:
-            torch.save(model.state_dict(), checkpoint_path)
+            torch.save(autoencoder.network, checkpoint_path)
             print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
+        showfig(autoencoder, train_loader)
     else:
-        model.load_state_dict(torch.load(checkpoint_path))
-
-    if show:
-        showfig(model, dataloader)
+        autoencoder.network = torch.load(checkpoint_path, map_location=device)
+        showfig(autoencoder, train_loader)
 
 # -----------------------------------------------------------------------------------------
 if __name__ == "__main__":
-    checkpoint_path = './model/AEModel.pkl'
-    show = True
-    verbose = True
-    train('Test', checkpoint_path, show, verbose)
+    checkpoint_path = './model/AEModel100epoch.pkl'
+    train('Test', checkpoint_path)
     #train('Test', checkpoint_path)

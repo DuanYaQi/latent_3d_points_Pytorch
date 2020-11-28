@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from argparse import ArgumentParser
 from torch.utils.data import TensorDataset,DataLoader
-from torchkeras import Model,summary
 import pytorch_lightning as pl
 
 from utils.in_out import snc_category_to_synth_id
@@ -112,6 +111,7 @@ def parse_arguments():
     parser.add_argument('--class_name', type=str, default = 'chair')
     parser.add_argument('--batch_size', type=int, default = 50)
     parser.add_argument('--sample_num', type=int, default = 6500)
+    parser.add_argument('--max_epochs', type=int, default = 10)
     return parser.parse_args()
 
 # -----------------------------------------------------------------------------------------
@@ -119,7 +119,7 @@ def train(phase='Train', checkpoint_path: str=None):
     args = parse_arguments()
     trainer_config = {
         'gpus'                   : 1,  # Set this to None for CPU training
-        'max_epochs'             : 100,
+        'max_epochs'             : args.max_epochs,
         'automatic_optimization' : True,
     }
     # Load Point-Clouds
@@ -137,20 +137,20 @@ def train(phase='Train', checkpoint_path: str=None):
         if checkpoint_path is not None:
             torch.save(autoencoder.network, checkpoint_path)
             print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
-        showfig(autoencoder, train_loader)
     elif phase == 'continueTrain':
         autoencoder.network = torch.load(checkpoint_path, map_location=device)
         trainer.fit(autoencoder, train_loader)
         if checkpoint_path is not None:
             torch.save(autoencoder.network, checkpoint_path)
             print(f'Model has been save to \033[1m{checkpoint_path}\033[0m')
-        showfig(autoencoder, train_loader)
     else:
         autoencoder.network = torch.load(checkpoint_path, map_location=device)
-        showfig(autoencoder, train_loader)
+        
+    showfig(autoencoder, train_loader)
 
 # -----------------------------------------------------------------------------------------
 if __name__ == "__main__":
-    checkpoint_path = './model/AEModel100epoch.pkl'
-    train('Test', checkpoint_path)
-    #train('Test', checkpoint_path)
+    checkpoint_path = './model/AEModel10epoch.pkl'
+    train('Train', checkpoint_path)
+    # checkpoint_path = './model/AEModel100epoch.pkl'
+    # train('Test', checkpoint_path)

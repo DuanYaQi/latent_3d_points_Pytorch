@@ -18,7 +18,7 @@ This work proposed a novel deep net architecture for auto-encoding point clouds.
 
 
 ## Datasets
-- shape_net_core_uniform_samples_2048.zip(download_data.sh)
+- shape_net_core_uniform_samples_2048.zip(run 'data/download_data.sh')
 
 
 

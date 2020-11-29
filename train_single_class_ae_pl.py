@@ -109,8 +109,8 @@ def parse_arguments():
     parser.add_argument('--bneck_size', type=int, help='Bottleneck-AE size', default = 128)                 #TODO: Adapt haparms
     parser.add_argument('--ae_loss', type=str, help='Loss to optimize: emd or chamfer', default = 'chamfer') #TODO: ADD EMD
     parser.add_argument('--class_name', type=str, default = 'chair')
-    parser.add_argument('--batch_size', type=int, default = 50)
-    parser.add_argument('--sample_num', type=int, default = 6500)
+    parser.add_argument('--batch_size', type=int, default = 32)
+    parser.add_argument('--sample_num', type=int, default = 6400)
     parser.add_argument('--max_epochs', type=int, default = 10)
     return parser.parse_args()
 

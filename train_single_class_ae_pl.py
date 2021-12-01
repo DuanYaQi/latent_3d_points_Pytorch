@@ -104,7 +104,7 @@ def showfig(model, dataloader):
 # -----------------------------------------------------------------------------------------
 def parse_arguments():
     parser = ArgumentParser()
-    parser.add_argument('--top_in_dir', type=str, help='Top-dir of where point-clouds are stored', default = '/home/latent_3d_points_Pytorch/data/shape_net_core_uniform_samples_2048/')
+    parser.add_argument('--top_in_dir', type=str, help='Top-dir of where point-clouds are stored', default = '../data/latent_3d_points_Pytorch/shape_net_core_uniform_samples_2048/')
     parser.add_argument('--n_pc_points', type=int, help='Number of points per model', default = 2048)       #TODO: Adapt datasets
     parser.add_argument('--bneck_size', type=int, help='Bottleneck-AE size', default = 128)                 #TODO: Adapt haparms
     parser.add_argument('--ae_loss', type=str, help='Loss to optimize: emd or chamfer', default = 'chamfer') #TODO: ADD EMD
@@ -120,7 +120,7 @@ def train(phase='Train', checkpoint_path: str=None):
     trainer_config = {
         'gpus'                   : 1,  # Set this to None for CPU training
         'max_epochs'             : args.max_epochs,
-        'automatic_optimization' : True,
+        #'automatic_optimization' : True,
     }
     # Load Point-Clouds
     syn_id = snc_category_to_synth_id()[args.class_name]  # class2id
